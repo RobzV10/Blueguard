@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BlueGuard — Controller</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{
+  width:100%;height:100%;overflow:hidden;
+  background:#06101e;
+  font-family:'Courier New',monospace;
+  user-select:none;touch-action:none;
+}
+
+/* ── Status bar top ── */
+#status{
+  position:fixed;top:0;left:0;right:0;height:42px;
+  background:rgba(8,20,58,0.97);border-bottom:2px solid #006cbe;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;z-index:100;
+}
+#badge{font-size:16px;font-weight:bold;letter-spacing:2px;}
+#conn-row{display:flex;align-items:center;gap:8px;}
+#dot{
+  width:11px;height:11px;border-radius:50%;
+  background:#ff3737;box-shadow:0 0 7px #ff3737;transition:all .3s;
+}
+#dot.ok{background:#37d75f;box-shadow:0 0 7px #37d75f;}
+#conn-lbl{font-size:11px;color:#7896be;}
+
+/* ── LANDSCAPE main layout ── */
+#main{
+  position:fixed;
+  top:42px;left:0;right:0;bottom:0;
+  display:flex;
+  flex-direction:row;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 20px;
+  gap:16px;
+}
+
+/* ── Joystick (left side in landscape) ── */
+#jarea{
+  position:relative;
+  width:min(42vw, 240px);
+  height:min(42vw, 240px);
+  flex-shrink:0;
+}
+#jbase{
+  position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle at 40% 35%,#0f2a50,#06101e);
+  border:3px solid #006cbe44;
+  box-shadow:0 0 28px rgba(0,108,190,.15),inset 0 2px 4px rgba(80,200,255,.1);
+}
+#jring{position:absolute;inset:14px;border-radius:50%;border:1px dashed #006cbe33;}
+#knob{
+  position:absolute;
+  width:34%;height:34%;border-radius:50%;
+  background:radial-gradient(circle at 40% 35%,#50c8ff,#006cbe);
+  box-shadow:0 4px 14px rgba(0,108,190,.6),0 0 0 3px rgba(80,200,255,.2);
+  transform:translate(-50%,-50%);
+  left:50%;top:50%;
+  transition:box-shadow .1s;
+  pointer-events:none;
+}
+#knob.active{box-shadow:0 4px 22px rgba(0,108,190,.9),0 0 0 5px rgba(80,200,255,.35);}
+.guide{position:absolute;background:#006cbe22;border-radius:2px;}
+.guide.v{width:2px;height:28%;left:50%;transform:translateX(-50%);}
+.guide.v.top{top:4%}.guide.v.bot{bottom:4%}
+.guide.h{height:2px;width:28%;top:50%;transform:translateY(-50%);}
+.guide.h.l{left:4%}.guide.h.r{right:4%}
+
+/* ── Center info ── */
+#center-info{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  flex:1;
+}
+#player-name{font-size:22px;font-weight:bold;letter-spacing:3px;color:#d2ebff;}
+#input-display{font-size:10px;color:#2a3a50;letter-spacing:1px;}
+#move-hint{font-size:11px;color:#4a6a8a;text-align:center;}
+
+/* ── Net button (right side in landscape) ── */
+#btnwrap{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  flex-shrink:0;
+}
+#netbtn{
+  width:min(38vw,175px);
+  height:min(38vw,175px);
+  border-radius:50%;
+  background:radial-gradient(circle at 40% 35%,#ffd742,#c89600);
+  border:none;
+  box-shadow:0 6px 22px rgba(255,215,66,.4),0 0 0 4px rgba(255,215,66,.15);
+  cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  transition:transform .08s,box-shadow .08s;
+}
+#netbtn:active,#netbtn.pressed{
+  transform:scale(.91);
+  box-shadow:0 2px 10px rgba(255,215,66,.7),0 0 0 8px rgba(255,215,66,.28);
+}
+#netbtn .icon{font-size:36px;line-height:1;}
+#netbtn .lbl{
+  font-size:12px;font-weight:bold;letter-spacing:2px;
+  color:#1a0a00;font-family:'Courier New',monospace;
+}
+#net-hint{font-size:10px;color:#4a6a8a;letter-spacing:1px;text-align:center;}
+
+/* ── Back button (bottom-left corner) ── */
+#backbtn{
+  position:fixed;
+  bottom:12px;left:12px;
+  width:46px;height:46px;
+  border-radius:10px;
+  background:rgba(0,108,190,0.15);
+  border:1.5px solid #006cbe55;
+  color:#4a6a8a;
+  font-size:20px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  z-index:250;
+  transition:background .15s,color .15s;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  touch-action:none;
+}
+#backbtn:active{
+  background:rgba(0,108,190,0.45);
+  color:#50c8ff;
+}
+
+/* ── Portrait warning (force landscape) ── */
+#portrait-warn{
+  display:none;
+  position:fixed;inset:0;background:#06101e;
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;z-index:300;
+}
+#portrait-warn.show{display:flex;}
+#portrait-warn p{color:#50c8ff;font-size:16px;text-align:center;padding:0 20px;}
+
+/* ── Connecting overlay ── */
+#connecting{
+  position:fixed;inset:0;background:#06101e;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:18px;z-index:200;
+}
+#connecting.hidden{display:none;}
+.spinner{
+  width:52px;height:52px;border-radius:50%;
+  border:4px solid #006cbe22;border-top-color:#50c8ff;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+#connecting h2{color:#50c8ff;font-size:20px;letter-spacing:3px;}
+#connecting p{color:#4a6a8a;font-size:12px;text-align:center;padding:0 20px;}
+
+/* ── Player colour themes ── */
+body.p1 #badge{color:#5a96c8;}
+body.p1 #knob{background:radial-gradient(circle at 40% 35%,#88c8ff,#5a96c8);}
+body.p1 #netbtn{
+  background:radial-gradient(circle at 40% 35%,#88c8ff,#3a76a8);
+  box-shadow:0 6px 22px rgba(90,150,200,.5),0 0 0 4px rgba(90,150,200,.2);
+}
+body.p2 #badge{color:#ffc832;}
+body.p2 #knob{background:radial-gradient(circle at 40% 35%,#ffe080,#c89600);}
+body.p2 #netbtn{
+  background:radial-gradient(circle at 40% 35%,#ffd742,#c89600);
+}
+</style>
+</head>
+<body>
+
+<!-- Force landscape warning -->
+<div id="portrait-warn">
+  <p style="font-size:52px">📱↔️</p>
+  <p>Turn your phone<br><strong>Horizontally</strong><br>To use the controller</p>
+</div>
+
+<!-- Connecting overlay -->
+<div id="connecting">
+  <div class="spinner"></div>
+  <h2>CONNECTING...</h2>
+  <p id="cmsg">Connecting to BlueGuard server...</p>
+</div>
+
+<!-- Status bar -->
+<div id="status">
+  <span id="badge">PLAYER ?</span>
+  <div id="conn-row">
+    <div id="dot"></div>
+    <span id="conn-lbl">Connecting...</span>
+  </div>
+</div>
+
+<!-- Back button -->
+<button id="backbtn" ontouchstart="backPress(event)" ontouchend="backRelease(event)" ontouchcancel="backRelease(event)">&#8592;</button>
+
+<!-- Main controller layout (landscape) -->
+<div id="main">
+
+  <!-- LEFT: Joystick -->
+  <div id="jarea">
+    <div id="jbase">
+      <div class="guide v top"></div>
+      <div class="guide v bot"></div>
+      <div class="guide h l"></div>
+      <div class="guide h r"></div>
+      <div id="jring"></div>
+    </div>
+    <div id="knob"></div>
+  </div>
+
+  <!-- CENTER: Info -->
+  <div id="center-info">
+    <div id="player-name">PLAYER ?</div>
+    <div id="move-hint">Joystick = move<br>Button = throw the net</div>
+    <div id="input-display">dx:0 dy:0</div>
+  </div>
+
+  <!-- RIGHT: Net button -->
+  <div id="btnwrap">
+    <button id="netbtn"
+      ontouchstart="netPress(event)"
+      ontouchend="netRelease(event)"
+      ontouchcancel="netRelease(event)">
+      <span class="icon">🎣</span>
+      <span class="lbl">LAUNCH</span>
+    </button>
+    <span id="net-hint">Press to<br>throw the net</span>
+  </div>
+
+</div>
+
+<script>
+// ── Config ──
+const params = new URLSearchParams(location.search);
+const playerNum = params.get('player') || '1';
+const role = 'p' + playerNum;
+const serverIP = location.hostname;
+const WS_URL = 'ws://' + serverIP + ':8765';
+
+// Apply player theme
+document.body.classList.add(playerNum === '1' ? 'p1' : 'p2');
+document.getElementById('badge').textContent = 'PLAYER ' + playerNum;
+document.getElementById('player-name').textContent = 'PLAYER ' + playerNum;
+
+// ── WebSocket ──
+let ws = null, connected = false, reconnTimer = null;
+
+function connect() {
+  document.getElementById('cmsg').textContent = 'Connecting to ' + serverIP + ':8765...';
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'register', role }));
+  };
+
+  ws.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'registered') {
+      connected = true;
+      document.getElementById('connecting').classList.add('hidden');
+      document.getElementById('dot').className = 'ok';
+      document.getElementById('conn-lbl').textContent = 'Connected ✓';
+      clearTimeout(reconnTimer);
+    }
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    document.getElementById('dot').className = '';
+    document.getElementById('conn-lbl').textContent = 'Disconnected';
+    document.getElementById('connecting').classList.remove('hidden');
+    document.getElementById('cmsg').textContent = 'Reconnecting in 2s...';
+    reconnTimer = setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => {
+    document.getElementById('cmsg').textContent = 'Impossible to reach ' + serverIP + ':8765';
+  };
+}
+
+function send(d) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(d));
+}
+
+// ── Joystick ──
+const jarea = document.getElementById('jarea');
+const jbase = document.getElementById('jbase');
+const knob  = document.getElementById('knob');
+const disp  = document.getElementById('input-display');
+
+let jActive = false, lastDx = 0, lastDy = 0, sendIv = null;
+
+function updateKnob(cx, cy) {
+  const rect = jbase.getBoundingClientRect();
+  const cX = rect.left + rect.width / 2;
+  const cY = rect.top  + rect.height / 2;
+  const maxR = rect.width * 0.37;
+  let dx = cx - cX, dy = cy - cY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > maxR) { dx = dx / dist * maxR; dy = dy / dist * maxR; }
+  lastDx = parseFloat((dx / maxR).toFixed(2));
+  lastDy = parseFloat((dy / maxR).toFixed(2));
+  if (Math.abs(lastDx) < 0.08) lastDx = 0;
+  if (Math.abs(lastDy) < 0.08) lastDy = 0;
+  knob.style.left = 'calc(50% + ' + dx + 'px)';
+  knob.style.top  = 'calc(50% + ' + dy + 'px)';
+  disp.textContent = 'dx:' + lastDx + ' dy:' + lastDy;
+}
+
+function startJ(e) {
+  e.preventDefault();
+  jActive = true;
+  knob.classList.add('active');
+  updateKnob(e.touches[0].clientX, e.touches[0].clientY);
+  sendIv = setInterval(() => { if (jActive) send({ type: 'input', dx: lastDx, dy: lastDy }); }, 33);
+}
+function moveJ(e) {
+  if (!jActive) return;
+  e.preventDefault();
+  updateKnob(e.touches[0].clientX, e.touches[0].clientY);
+}
+function endJ(e) {
+  e.preventDefault();
+  jActive = false;
+  knob.classList.remove('active');
+  lastDx = 0; lastDy = 0;
+  knob.style.left = '50%';
+  knob.style.top  = '50%';
+  disp.textContent = 'dx:0 dy:0';
+  clearInterval(sendIv);
+  send({ type: 'input', dx: 0, dy: 0 });
+}
+
+jarea.addEventListener('touchstart',  startJ, { passive: false });
+jarea.addEventListener('touchmove',   moveJ,  { passive: false });
+jarea.addEventListener('touchend',    endJ,   { passive: false });
+jarea.addEventListener('touchcancel', endJ,   { passive: false });
+
+// ── Net button ──
+function netPress(e) {
+  e.preventDefault();
+  document.getElementById('netbtn').classList.add('pressed');
+  send({ type: 'button', action: 'net_press' });
+  if (navigator.vibrate) navigator.vibrate(45);
+}
+function netRelease(e) {
+  e.preventDefault();
+  document.getElementById('netbtn').classList.remove('pressed');
+  send({ type: 'button', action: 'net_release' });
+}
+
+// ── Orientation: force landscape ──
+function checkOrientation() {
+  const warn = document.getElementById('portrait-warn');
+  // Landscape = width > height
+  if (window.innerWidth < window.innerHeight) {
+    warn.classList.add('show');
+  } else {
+    warn.classList.remove('show');
+  }
+}
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 300));
+checkOrientation();
+
+// Prevent scroll & zoom
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+// ── Back button ──
+function backPress(e) {
+  e.preventDefault();
+  send({ type: 'button', action: 'back_press' });
+  if (navigator.vibrate) navigator.vibrate(20);
+}
+function backRelease(e) {
+  e.preventDefault();
+  send({ type: 'button', action: 'back_release' });
+}
+
+// ── Start ──
+connect();
+</script>
+</body>
+</html>
